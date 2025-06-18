@@ -417,7 +417,7 @@
     {
       "parameters": {
         "chatId": "8022241025",
-        "text": "=📄 Nieuwe offerte ter goedkeuring voor {{ $('Verwerken van AI-Output en Prijsberekening').item.json.klantNaam }}\n👤 Contactpersoon: \n💶 Totaal Eenmalig: € {{ $('Verwerken van AI-Output en Prijsberekening').item.json.totaalEenmalig }}\n💶 Totaal Maandelijks: € {{ $('Verwerken van AI-Output en Prijsberekening').item.json.totaalMaandelijks }}\n\n🔗 Bekijk offerte:\n{{ $json.webViewLink }}\n\n🔗 Bewerk offerte:\n{{ $json.webContentLink }}\n\n✅ Keur goed:\n{{ $execution.resumeUrl }}?status=approved\n\n❌ Keur af:\n{{ $execution.resumeUrl }}?status=rejected",
+        "text": "📄 Nieuwe offerte ter goedkeuring voor {{$json.klantNaam}}.\n\n👤 Contactpersoon: {{$json.contactPersoon}}\n💶 Totaal Eenmalig: €{{$json.totaalEenmalig}}\n💶 Totaal Maandelijks: €{{$json.totaalMaandelijks}}\n\n🔗 Bekijk offerte:\nhttps://docs.google.com/document/d/{{$node[\"Google Docs: Offerte Vullen\"].json[\"id\"]}}/view\n\n✅ Keur goed:\n{{$execution.resumeUrl}}?status=approved\n\n❌ Keur af:\n{{$execution.resumeUrl}}?status=rejected",
         "additionalFields": {}
       },
       "id": "e969074b-57f9-4670-afcd-98782a939462",
