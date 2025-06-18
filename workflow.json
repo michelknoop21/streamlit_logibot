@@ -1,0 +1,979 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b1b4b145-11cb-4433-acd7-47a77378cac8",
+      "name": "Test: Handmatige Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"klantNaam\": \"Test BV\",\n  \"contactPersoon\": \"Jan Testman\",\n  \"emailAdres\": \"jan@testmail.nl\",\n  \"telefoonnummer\": \"0612345678\",\n  \"adres\": \"Teststraat 1\",\n  \"postcode\": \"1234 AB\",\n  \"plaats\": \"Testdorp\",\n  \"probleemOmschrijving\": \"Ik wil een webshop en e-mail verhuizen\",\n  \"extraOpmerkingen\": \"Extra opmerkingen bij deze test\"\n}",
+        "options": {}
+      },
+      "id": "713f2960-8c56-44f6-8aaa-97d91868fc53",
+      "name": "Harde testdata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -980,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3a59f42c-7f51-4507-962d-e1b16bbf4575",
+              "name": "offerteAanvraagData",
+              "type": "object",
+              "value": "={{ $json }}"
+            },
+            {
+              "id": "9e4aafa7-1775-4667-a4d7-9747ce5b9d39",
+              "name": "offerteDatum",
+              "type": "string",
+              "value": "={{ new Date().toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "24c55a1a-1339-410e-aa2e-6842ea0bd8e7",
+      "name": "Set: Aanvraag Structureren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -760,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2142462e-2d47-80ee-a828-ec5aaf96bd0f",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "ddad12b6-4090-4c6f-a207-21deffb48446",
+      "name": "Notion: Prijslijst Ophalen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -980,
+        -60
+      ],
+      "notes": "Pricingsheet Notion DB",
+      "credentials": {
+        "notionApi": {
+          "id": "47KTDBveUGUCkq6i",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "15b232bf-ce3a-4782-9b4a-89b1e4291fc1",
+              "name": "prijslijstDataArray",
+              "type": "array",
+              "value": "={{ $input.all().map(e => e.json).filter(d => d.property_dienst_naam && d.property_dienst_naam.trim() !== '') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "be19ee48-f371-46d5-9a50-456035059a12",
+      "name": "Set: Prijslijst Filteren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -760,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "77532649-b703-489f-8f3f-1e39000b083b",
+      "name": "Merge: Aanvraag + Prijslijst",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -540,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = items[0];\n\nif (!item || !item.json || !item.json.offerteAanvraagData || !item.json.prijslijstDataArray) {\n  console.log(\"Input data is niet correct of ontbreekt. Sla dit item over.\");\n  return []; \n}\n\nconst offerteData = item.json.offerteAanvraagData;\nconst prijslijst = item.json.prijslijstDataArray;\n\nconst probleemOmschrijving = offerteData.probleemOmschrijving;\n\nconst dienstenLijst = prijslijst.map(dienst => {\n  return {\n    id: dienst.property_number, // We gebruiken de ID voor de AI\n    naam: dienst.property_dienst_naam,\n    omschrijving: dienst.property_omschrijving,\n    keywords: dienst.property_keywords || \"\"\n  };\n});\n\nconst output = {\n  json: {\n    probleemOmschrijving: probleemOmschrijving,\n    beschikbareDiensten: dienstenLijst\n  }\n};\n\nreturn [output];"
+      },
+      "id": "8c1b7625-b614-459b-a437-be24cdc7652c",
+      "name": "Function: Voorbereiding AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gemma3:latest",
+        "prompt": "CONTEXT:\nKlantvraag: \"{{$json.probleemOmschrijving}}\"\nBeschikbare diensten: {{ JSON.stringify($json.beschikbareDiensten) }}\n\nTAAK:\n1. Analyseer de klantvraag.\n2. Vergelijk de vraag met de naam, omschrijving en keywords van elke dienst in \"Beschikbare diensten\".\n3. Identificeer alle diensten die relevant zijn voor de klantvraag.\n4. Genereer een korte, samenvattende tekst voor in de offerte.\n5. Maak een realistische inschatting voor het 'aantal' voor elke geselecteerde dienst.\n\nOUTPUT FORMAAT (alleen dit JSON-object, verder niets):\n{\n  \"algemeneTekstOfferte\": \"Een korte, professionele en relevante tekst voor de offerte.\",\n  \"geselecteerdeDiensten\": [\n    {\n      \"id\": \"ID van de relevante dienst uit de lijst\",\n      \"aantal\": 1\n    },\n    {\n      \"id\": \"ID van een andere relevante dienst\",\n      \"aantal\": 5\n    }\n  ]\n}",
+        "options": {
+          "systemMessage": "Jouw enige taak is het analyseren van context en het retourneren van een valide JSON-object. Antwoord niet in zinnen, geef geen uitleg, en begin niet met ```json. Je output moet ALTIJD exact voldoen aan het gespecificeerde formaat."
+        }
+      },
+      "id": "3d9c2bb0-80d4-47c2-9604-e53b890a597b",
+      "name": "Ollama: Dienstherkenning (matcht op ID)",
+      "type": "n8n-nodes-base.ollamaChatModel",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        -160
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "lG6mSqkYB5sbvgPm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item;\n\nif (!item.json || typeof item.json.content !== 'string' || item.json.content.trim() === '') {\n  return [{\n    json: {\n      foutmelding: 'De AI (Ollama) heeft geen antwoord gegeven.',\n      algemeneTekstOfferte: 'Kon de aanvraag niet verwerken omdat de AI niet reageerde.',\n      geselecteerdeDiensten: []\n    }\n  }];\n}\n\nconst rawOutput = item.json.content;\nconst match = rawOutput.match(/```json\\s*([\\s\\S]*?)\\s*```/);\nconst cleanedJsonString = match ? match[1].trim() : rawOutput.trim();\n\ntry {\n  const parsedData = JSON.parse(cleanedJsonString);\n  if (!Array.isArray(parsedData.geselecteerdeDiensten)) {\n    parsedData.geselecteerdeDiensten = [];\n  }\n  return [{ json: parsedData }];\n} catch (error) {\n  return [{\n    json: {\n      foutmelding: `De AI gaf een ongeldig JSON-antwoord: ${error.message}`,\n      algemeneTekstOfferte: 'Kon de aanvraag niet verwerken door een onverwacht AI-antwoord.',\n      geselecteerdeDiensten: [],\n      rawAiOutput: cleanedJsonString\n    }\n  }];\n}"
+      },
+      "id": "2c118aa7-ef13-49bc-b970-a9cbcff7b408",
+      "name": "Code: AI Output Parser",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "2d283853-2938-408e-8010-422002b5ec7b",
+      "name": "Merge: AI Resultaat + Hoofddata",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        340,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.item.json;\n\nconst offerteAanvraagData = inputData.offerteAanvraagData;\nconst geselecteerdeDiensten = inputData.geselecteerdeDiensten;\nconst volledigePrijslijst = inputData.prijslijstDataArray;\n\nconst sanitize = (str) => String(str || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));\n\nconst fouten = [];\nlet eenmaligeKostenTotaal = 0;\nlet maandelijkseKostenTotaal = 0;\nconst verwerkteDiensten = [];\n\nif (!volledigePrijslijst || !geselecteerdeDiensten) {\n  fouten.push(\"Prijslijst of geselecteerde diensten ontbreken.\");\n  return [{ json: { ...inputData, fouten: fouten } }];\n}\n\nfor (const aiDienst of geselecteerdeDiensten) {\n  const matchingDienst = volledigePrijslijst.find(\n    (p) => p.property_number === aiDienst.id\n  );\n\n  if (matchingDienst) {\n    const aantal = aiDienst.aantal || 1;\n    const pageId = matchingDienst.id;\n    let eenmaligeKosten = parseFloat(matchingDienst.property_eenmalige_kosten) || 0;\n    let maandelijkseKosten = parseFloat(matchingDienst.property_prijs) || 0;\n\n    let prijsPerEenheidTekst = `€${maandelijkseKosten.toFixed(2)}`;\n    let totaalTekst = `€${(maandelijkseKosten * aantal).toFixed(2)}`;\n\n    if (matchingDienst.property_eenheid === 'Op aanvraag' || (eenmaligeKosten === 0 && maandelijkseKosten === 0)) {\n        prijsPerEenheidTekst = \"Op aanvraag\";\n        totaalTekst = \"Op aanvraag\";\n    } else if (['€/uur', '€/maand'].includes(matchingDienst.property_eenheid)) {\n        maandelijkseKostenTotaal += maandelijkseKosten * aantal;\n    } else {\n        const eenmaligePrijs = eenmaligeKosten > 0 ? eenmaligeKosten : maandelijkseKosten;\n        eenmaligeKostenTotaal += eenmaligePrijs * aantal;\n        totaalTekst = `€${(eenmaligePrijs * aantal).toFixed(2)}`;\n    }\n    \n    verwerkteDiensten.push({\n      id: pageId,\n      dienstNaam: matchingDienst.property_dienst_naam,\n      omschrijving: matchingDienst.property_omschrijving,\n      keywords: matchingDienst.property_keywords,\n      aantal: aantal,\n      prijsPerEenheid: prijsPerEenheidTekst,\n      totaal: totaalTekst,\n      eenheid: matchingDienst.property_eenheid\n    });\n\n  } else {\n    fouten.push(`Dienst met ID \"${aiDienst.id}\" niet gevonden in de prijslijst.`);\n  }\n}\n\nlet productTableHtml = `<style>table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #dddddd; text-align: left; padding: 8px; } th { background-color: #f2f2f2; } tfoot { font-weight: bold; }</style><table><thead><tr><th>Product/Dienst</th><th>Omschrijving</th><th>Aantal</th><th>Prijs p/s</th><th>Totaal</th></tr></thead><tbody>`;\nverwerkteDiensten.forEach(dienst => {\n  productTableHtml += `<tr><td>${sanitize(dienst.dienstNaam)}</td><td>${sanitize(dienst.omschrijving)}</td><td>${dienst.aantal}</td><td>${dienst.prijsPerEenheid}</td><td>${dienst.totaal}</td></tr>`;\n});\nproductTableHtml += `</tbody><tfoot><tr><td colspan=\"4\" style=\"text-align: right;\">Totaal Eenmalig:</td><td>€ ${eenmaligeKostenTotaal.toFixed(2)}</td></tr><tr><td colspan=\"4\" style=\"text-align: right;\">Totaal Maandelijks:</td><td>€ ${maandelijkseKostenTotaal.toFixed(2)}</td></tr></tfoot></table>`;\n\nreturn [{\n  json: {\n    ...offerteAanvraagData,\n    offerteDatum: inputData.offerteDatum,\n    geselecteerdeDiensten: verwerkteDiensten,\n    totaalEenmalig: eenmaligeKostenTotaal.toFixed(2),\n    totaalMaandelijks: maandelijkseKostenTotaal.toFixed(2),\n    productTableHtml: productTableHtml,\n    algemeneTekstOfferte: inputData.algemeneTekstOfferte,\n    fouten: fouten\n  }\n}];"
+      },
+      "id": "fe92a7f1-9056-4eb6-a073-5ae7cd2dc615",
+      "name": "Code: Offerte & Prijsberekening (matcht op ID)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -160
+      ],
+      "notes": "Uitleg: Deze node is het kloppende hart dat alle data samenbrengt, de prijzen berekent en de HTML-tabel voor het Word-document genereert."
+    },
+    {
+      "parameters": {
+        "fieldToSplit": "={{$json.geselecteerdeDiensten}}",
+        "options": {
+          "include": "all"
+        }
+      },
+      "id": "bb7957e8-f89c-4752-9f69-357931b14647",
+      "name": "Loop: Voor Elke Gevonden Dienst",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        780,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gemma3:latest",
+        "options": {}
+      },
+      "id": "20165dbd-bd5f-4b29-a3dd-de8ce401178b",
+      "name": "Ollama Chat Model",
+      "type": "n8n-nodes-base.ollamaChatModel",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        40
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "lG6mSqkYB5sbvgPm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "7a90a594-7fe5-4cfd-9963-015ad91f5056",
+      "name": "Merge: Keyword Resultaat + Loop Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1220,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d691d2ec-5db2-4244-917d-271edea2601c",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1210fa73-4166-4885-9617-5b558cca76b5",
+      "name": "IF: Nieuwe keywords?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const item = $input.item.json;\n\n  // STAP 1: DATA VOORBEREIDEN\n  const dienstNaam = item.dienstNaam.toLowerCase();\n  let aiKeywordsString = item.output || '';\n\n  if (aiKeywordsString.includes('\\n')) {\n    const lines = aiKeywordsString.split('\\n');\n    aiKeywordsString = lines[lines.length - 1];\n  }\n\n  let aiKeywordsArray = aiKeywordsString.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);\n\n  // STAP 2: VALIDATIE & FILTERING\n  if (dienstNaam.includes('mail')) {\n    const verbodenWoorden = ['webshop', 'winkel', 'shop', 'e-commerce', 'kassa', 'online store'];\n    aiKeywordsArray = aiKeywordsArray.filter(keyword => \n      !verbodenWoorden.some(verbodenWoord => keyword.includes(verbodenWoord))\n    );\n  }\n\n  if (dienstNaam.includes('shop') || dienstNaam.includes('winkel')) {\n    const verbodenWoorden = ['mail', 'mailbox', 'e-mail', 'email'];\n    aiKeywordsArray = aiKeywordsArray.filter(keyword => \n      !verbodenWoorden.some(verbodenWoord => keyword.includes(verbodenWoord))\n    );\n  }\n\n  aiKeywordsArray = aiKeywordsArray.filter(keyword => keyword.length > 2);\n\n  // STAP 3: SAMENVOEGEN & ONTDUBBELEN\n  const bestaandeKeywordsArray = (item.keywords || '').split(',').map(k => k.trim()).filter(Boolean);\n  const keywordsMap = new Map();\n  const teCombinerenArray = [...bestaandeKeywordsArray, ...aiKeywordsArray];\n\n  for (const keyword of teCombinerenArray) {\n      keywordsMap.set(keyword.toLowerCase(), keyword);\n  }\n  \n  const finaleKeywordsArray = [...keywordsMap.values()];\n  const finaleKeywordString = finaleKeywordsArray.join(', ');\n\n  // STAP 4: OUTPUT\n  item.gecombineerdeKeywords = finaleKeywordString;\n  return { json: item };\n\n} catch (error) {\n  return { \n    json: { \n      error: `Fout in Code node: ${error.message}`, \n      inputDataDieDeFoutVeroorzaakte: $input.item.json \n    } \n  };\n}"
+      },
+      "id": "ee48ca97-ee41-4ad6-9702-1d11ce7d4a00",
+      "name": "Code: Keywords Combineren & Valideren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": "={{$json.id}}",
+        "simple": false,
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Keywords",
+              "textContent": "={{$json.gecombineerdeKeywords}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27a759da-9f8c-4783-85c5-6682bc4f088f",
+      "name": "Notion: Keywords Updaten",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1880,
+        -260
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "47KTDBveUGUCkq6i",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "1t8maV7wfEtwD8b4DlgQ7qT8WUkmLW_PgeGPP-1s5_gU",
+          "mode": "list"
+        },
+        "name": "=Offerte - {{ $json.klantNaam }} - {{ $json.offerteDatum }}",
+        "options": {}
+      },
+      "id": "f51ae949-a29d-473d-bc87-1be6eb754f9a",
+      "name": "Google Drive: Template Kopiëren",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        780,
+        -360
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "V4ksh6Mb4uzb1VvJ",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{$json.id}}",
+        "simple": false,
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "replaceAll",
+              "text": "{{klantNaam}}",
+              "replaceText": "={{$json.klantNaam}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{adres}}",
+              "replaceText": "={{$json.adres}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{contactPersoon}}",
+              "replaceText": "={{$json.contactPersoon}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{telefoonnummer}}",
+              "replaceText": "={{$json.telefoonnummer}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{offerteDatum}}",
+              "replaceText": "={{$json.offerteDatum}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{PRODUCT_TABEL}}",
+              "replaceText": "={{$json.productTableHtml}}"
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{AI_GEGENEREERDE_TEKST}}",
+              "replaceText": "={{$json.algemeneTekstOfferte}}"
+            }
+          ]
+        }
+      },
+      "id": "b0068305-b825-4107-8822-0453d069b183",
+      "name": "Google Docs: Offerte Vullen",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        -360
+      ],
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "FKX65LwmBxGvwB7U",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "8022241025",
+        "text": "📄 Nieuwe offerte ter goedkeuring voor {{$json.klantNaam}}.\n\n👤 Contactpersoon: {{$json.contactPersoon}}\n💶 Totaal Eenmalig: €{{$json.totaalEenmalig}}\n💶 Totaal Maandelijks: €{{$json.totaalMaandelijks}}\n\n🔗 Bekijk offerte:\nhttps://docs.google.com/document/d/{{$node[\"Google Docs: Offerte Vullen\"].json[\"id\"]}}/view\n\n✅ Keur goed:\n{{$execution.resumeUrl}}?status=approved\n\n❌ Keur af:\n{{$execution.resumeUrl}}?status=rejected",
+        "additionalFields": {}
+      },
+      "id": "e969074b-57f9-4670-afcd-98782a939462",
+      "name": "Telegram: Stuur voor Goedkeuring",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1220,
+        -360
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "EmKG8smv3mBca0Dj",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {}
+      },
+      "id": "52f6b4b4-d55a-4932-a5e9-d779f5791720",
+      "name": "Wait for Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.query.status }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "06b0d95d-79e5-4f46-953b-e1b6f0e4b868",
+      "name": "IF: Goedgekeurd?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1660,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": "={{$node[\"Google Docs: Offerte Vullen\"].json[\"id\"]}}",
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf"
+            }
+          },
+          "fileName": "=Offerte - {{$json.klantNaam}} - {{$json.offerteDatum}}.pdf"
+        }
+      },
+      "id": "45d1d6a5-be9d-4340-97b5-24b8702b8813",
+      "name": "PDF-generatie",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1880,
+        -460
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "V4ksh6Mb4uzb1VvJ",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{$json.fileName}}",
+        "options": {}
+      },
+      "id": "5c9e2b19-c049-43c3-8f0a-7e6ac922c069",
+      "name": "Drive Upload",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2100,
+        -460
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "V4ksh6Mb4uzb1VvJ",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Uw definitieve offerte van Prezent Internet B.V. - {{$json.klantNaam}}",
+        "emailType": "html",
+        "message": "=<p>Geachte heer/mevrouw {{$json.contactPersoon}},</p>\n<p>Hartelijk dank voor uw aanvraag. Het doet ons genoegen u hierbij de definitieve offerte van [Jouw Bedrijfsnaam] aan te bieden.</p>\n<p>De offerte, specifiek afgestemd op uw behoeften zoals besproken, is bijgevoegd als PDF-document. Hierin vindt u een gedetailleerd overzicht van de voorgestelde diensten en de bijbehorende investering.</p>\n<p>Mocht u na het doornemen van de offerte vragen hebben of een toelichting wensen, aarzelt u dan niet contact met ons op te nemen. U kunt ons bereiken via {{$json.telefoonnummer}} of door simpelweg te antwoorden op deze e-mail.</p>\n<p>Wij kijken ernaar uit om met u samen te werken.</p>\n<p>Met vriendelijke groet,</p>\n<p>Het team van [Jouw Bedrijfsnaam]</p>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          },
+          "sendTo": "={{$json.emailAdres}}"
+        }
+      },
+      "id": "11d1a1b8-6a3f-48d8-963e-b838965f7c35",
+      "name": "Gmail: Verzend Offerte",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2320,
+        -460
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "P18BWj7e5nDokWDZ",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "CONTEXT:\n- Volledige Klantvraag: \"{{$json.probleemOmschrijving}}\"\n- Specifieke Dienst: \"{{$json.dienstNaam}}\"\n- Bestaande Trefwoorden voor deze dienst: \"{{$json.keywords}}\"\n\nTAAK:\n1. Lees de volledige klantvraag om de algemene context te begrijpen.\n2. Focus daarna **exclusief** op het gedeelte van de klantvraag dat relevant is voor de **Specifieke Dienst**.\n3. Genereer 3 tot 5 zeer relevante trefwoorden of synoniemen, geïnspireerd door dit gefocuste deel van de klantvraag.\n\nBELANGRIJKE REGEL:\nAls de 'Specifieke Dienst' over e-mail gaat, mogen de trefwoorden NIET over 'webshop' gaan. Als de dienst over 'webshop' gaat, mogen de trefwoorden NIET over 'e-mail' gaan. Wees specifiek.\n\nOUTPUT:\nGeef alleen een door komma's gescheiden lijst terug. Voorbeeld: \"trefwoord 1, trefwoord 2, trefwoord 3\"",
+        "options": {
+          "systemMessage": "Je bent een SEO en marketing expert. Jouw taak is het genereren van relevante trefwoorden. Geef alleen een door komma's gescheiden lijst terug, verder niets."
+        }
+      },
+      "id": "0f63b4d4-5390-482f-870a-0bfd7543f456",
+      "name": "Ollama: Keyword Extractor",
+      "type": "n8n-nodes-base.ollamaChatModel",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        -160
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "lG6mSqkYB5sbvgPm",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pak alle data uit de vorige stap\nconst data = $input.item.json;\n\n// De HTML-tabel die we eerder hebben gegenereerd\nconst productTabel = data.productTableHtml;\n\nconst prezentLogoUrl = \"https://www.prezent.nl/wp-content/themes/prezent/images/logo.png\";\n\nconst finalHtml = `\n<!DOCTYPE html>\n<html lang=\"nl\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Offerte Prezent Internet</title>\n  <style>\n    body { font-family: Arial, sans-serif; color: #333; margin: 40px auto; max-width: 800px; }\n    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #004680; padding-bottom: 20px; }\n    .header .logo-prezent { max-width: 180px; }\n    .company-info { text-align: right; font-size: 0.9em; line-height: 1.5; }\n    .client-info { margin-top: 30px; margin-bottom: 40px; line-height: 1.5; font-size: 11pt; }\n    h1 { font-size: 26px; color: #004680; margin-bottom: 5px; }\n    h2 { font-size: 16px; color: #004680; margin-top: 30px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; }\n    p, li { font-size: 11pt; line-height: 1.6; }\n    ul { padding-left: 20px; }\n    table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px; font-size: 10pt; }\n    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }\n    th { background-color: #f2f2f2; font-weight: bold; }\n    tfoot td { font-weight: bold; background-color: #f8f8f8; text-align: right; }\n    .signature-section { margin-top: 50px; page-break-before: avoid; }\n    .signature-box { border: 1px solid #ccc; height: 100px; width: 250px; margin-top: 10px; }\n  </style>\n</head>\n<body>\n\n  <div class=\"header\">\n    <img src=\"${prezentLogoUrl}\" alt=\"Prezent Internet Logo\" class=\"logo-prezent\">\n    <div class=\"company-info\">\n      <strong>Prezent Internet BV</strong><br>\n      Stadhuisplein 345a<br>\n      5038 TH Tilburg<br>\n      The Netherlands\n    </div>\n  </div>\n\n  <div class=\"client-info\">\n      <strong>Aan:</strong><br>\n      ${data.klantNaam}<br>\n      T.a.v. ${data.contactPersoon}<br>\n      ${data.adres}<br>\n      ${data.postcode} ${data.plaats}\n  </div>\n\n  <h1>Offerte</h1>\n  <p>Datum: ${data.offerteDatum}</p>\n\n  <p>${data.algemeneTekstOfferte}</p>\n\n  ${productTabel}\n\n  <h2>Voorwaarden</h2>\n  \n  <p><strong>Geldigheid:</strong> Deze offerte heeft een geldigheid van 14 dagen.</p>\n  \n  <p><strong>Planning:</strong> Nadat deze offerte is goedgekeurd en de eerste aanbetaling door ons is ontvangen zullen wij de opdracht in onze planning opnemen.</p>\n\n  <p><strong>Oplevering:</strong> Nadat de opdrachtgever de resultaten heeft geaccepteerd zullen wij de opdracht opleveren.</p>\n\n  <p><strong>Garantie:</strong> Wij geven een garantie van 2 maanden op de technische werking van het resultaat dat door ons is opgeleverd. Mocht zich binnen deze tijd technische problemen voordoen dan zullen wij deze kosteloos in behandeling nemen en oplossen.</p>\n\n  <p><strong>Facturatie:</strong></p>\n  <ul>\n    <li>50% bij akkoord op offerte.</li>\n    <li>50% bij oplevering opdracht.</li>\n    <li>Terugkerende kosten jaarlijks vooraf.</li>\n    <li>Betalingstermijn 14 dagen na facturatie.</li>\n  </ul>\n  \n  <p><small>Op al onze offertes, op alle opdrachten aan ons en op alle met ons gesloten overeenkomsten e.d. zijn onze Algemene Voorwaarden van toepassing, welke op 2 april 2001 zijn gedeponeerd bij de Kamer van Koophandel voor Midden–Brabant onder nummer 4210. Deze Algemene Voorwaarden prevaleren altijd boven eventuele (inkoop)voorwaarden van de opdrachtgever.</small></p>\n\n  <div class=\"signature-section\">\n    <h2>Akkoord</h2>\n    <table>\n      <tr>\n        <td style=\"width:50%; border:none; padding-left:0;\"><strong>Bedrijf:</strong></td>\n        <td style=\"width:50%; border:none; padding-left:0;\" rowspan=\"3\">\n          <div class=\"signature-box\"></div>\n        </td>\n      </tr>\n      <tr><td style=\"border:none; padding-left:0;\"><strong>Contactpersoon:</strong></td></tr>\n      <tr><td style=\"border:none; padding-left:0;\"><strong>Datum:</strong></td></tr>\n    </table>\n  </div>\n\n</body>\n</html>\n`;\n\nreturn [{ json: { ...data, finalHtml } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -400
+      ],
+      "id": "a0117e49-2eab-4157-925f-4047727c8569",
+      "name": "Code: HTML Offerte Bouwen"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/convert",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "html",
+              "value": "={{ $json.finalHtml }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -460,
+        -400
+      ],
+      "id": "f0813f47-f9bf-49b4-af6e-b4d304948249",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "name": "=Offerte-{{ $json.klantNaam }}-{{ $json.offerteDatum }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1mUxY77sIpPsnOybxDwhLyO2eFMN-eOUE",
+          "mode": "list",
+          "cachedResultName": "Offertes gegenereerd",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1mUxY77sIpPsnOybxDwhLyO2eFMN-eOUE"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -280,
+        -400
+      ],
+      "id": "dc3f42f7-3036-453f-970e-787114740447",
+      "name": "Google Drive: PDF Opslaan",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "V4ksh6Mb4uzb1VvJ",
+          "name": "Google Drive account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Test: Handmatige Start": {
+      "main": [
+        [
+          {
+            "node": "Harde testdata",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion: Prijslijst Ophalen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Harde testdata": {
+      "main": [
+        [
+          {
+            "node": "Set: Aanvraag Structureren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Aanvraag Structureren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Aanvraag + Prijslijst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Prijslijst Ophalen": {
+      "main": [
+        [
+          {
+            "node": "Set: Prijslijst Filteren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Prijslijst Filteren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Aanvraag + Prijslijst",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge: Aanvraag + Prijslijst": {
+      "main": [
+        [
+          {
+            "node": "Function: Voorbereiding AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge: AI Resultaat + Hoofddata",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Function: Voorbereiding AI": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Dienstherkenning (matcht op ID)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Dienstherkenning (matcht op ID)": {
+      "main": [
+        [
+          {
+            "node": "Code: AI Output Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: AI Output Parser": {
+      "main": [
+        [
+          {
+            "node": "Merge: AI Resultaat + Hoofddata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: AI Resultaat + Hoofddata": {
+      "main": [
+        [
+          {
+            "node": "Code: Offerte & Prijsberekening (matcht op ID)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Offerte & Prijsberekening (matcht op ID)": {
+      "main": [
+        [
+          {
+            "node": "Loop: Voor Elke Gevonden Dienst",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code: HTML Offerte Bouwen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Voor Elke Gevonden Dienst": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Keyword Extractor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge: Keyword Resultaat + Loop Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Ollama: Keyword Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Keyword Resultaat + Loop Data": {
+      "main": [
+        [
+          {
+            "node": "IF: Nieuwe keywords?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Nieuwe keywords?": {
+      "main": [
+        [
+          {
+            "node": "Code: Keywords Combineren & Valideren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Keywords Combineren & Valideren": {
+      "main": [
+        [
+          {
+            "node": "Notion: Keywords Updaten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Template Kopiëren": {
+      "main": [
+        [
+          {
+            "node": "Google Docs: Offerte Vullen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Docs: Offerte Vullen": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Stuur voor Goedkeuring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: Stuur voor Goedkeuring": {
+      "main": [
+        [
+          {
+            "node": "Wait for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Approval": {
+      "main": [
+        [
+          {
+            "node": "IF: Goedgekeurd?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Goedgekeurd?": {
+      "main": [
+        [
+          {
+            "node": "PDF-generatie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF-generatie": {
+      "main": [
+        [
+          {
+            "node": "Drive Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive Upload": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Verzend Offerte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Keyword Extractor": {
+      "main": [
+        [
+          {
+            "node": "Merge: Keyword Resultaat + Loop Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: HTML Offerte Bouwen": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: PDF Opslaan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: PDF Opslaan": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Stuur voor Goedkeuring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2e8c6691f0c80da88554c1ba33483fe43e739206f640db82bef9fa1504d80afb"
+  }
+}
